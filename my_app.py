@@ -1,84 +1,78 @@
 import streamlit as st
 import wikipediaapi
-from geopy.geocoders import Nominatim
 import folium
 from streamlit_folium import st_folium
 import requests
-import time
 
-# Page Configuration
-st.set_page_config(page_title="Personality Explorer", layout="wide")
+# 1. Page Config
+st.set_page_config(page_title="Global Personality Explorer", layout="wide")
 
 st.title("🌟 Global Personality Explorer")
-st.write("Search any famous personality to see their official photo and origin country on the map.")
+st.write("Search any famous personality to see their latest photo and origin country on the map.")
 
+# 2. Search Function for Latest Images (Like Google)
+def get_latest_image(query):
+    try:
+        # Using DuckDuckGo API (Fast and Free like Google Images)
+        url = f"https://duckduckgo.com/pd.js?q={query}&kl=wt-wt"
+        res = requests.get(url).json()
+        return res['results'][0]['image'] # Returns the first high-quality image
+    except:
+        return None
+
+# 3. Input Box
 name = st.text_input("Enter Personality Name:", placeholder="e.g. Cristiano Ronaldo, Imran Khan, Elon Musk")
 
 if name:
-    # Wikipedia API setup
-    wiki = wikipediaapi.Wikipedia(user_agent="PersonalityApp/1.2", language='en')
+    wiki = wikipediaapi.Wikipedia(user_agent="FinalProject/3.0", language='en')
     page = wiki.page(name)
 
     if page.exists():
-        # 1. Official Image Fetching Logic
-        def get_wiki_image(title):
-            try:
-                formatted_title = title.replace(" ", "_")
-                api_url = f"https://en.wikipedia.org/w/api.php?action=query&titles={formatted_title}&prop=pageimages&format=json&pithumbsize=600"
-                data = requests.get(api_url).json()
-                pages = data['query']['pages']
-                for pid in pages:
-                    return pages[pid]['thumbnail']['source']
-            except:
-                return None
+        # Fetching latest image from the web
+        img_url = get_latest_image(name)
 
-        image_url = get_wiki_image(page.title)
-
-        # UI Columns
         col1, col2 = st.columns([1, 1.2])
 
         with col1:
             st.header(f"Profile: {page.title}")
-            if image_url:
-                st.image(image_url, caption=f"Photo of {page.title}", use_container_width=True)
+            if img_url:
+                st.image(img_url, caption=f"Latest Image of {page.title}", use_container_width=True)
             else:
-                st.warning("Official photo not found on Wikipedia. Displaying Bio only.")
+                st.info("Image not found on web. Showing biography...")
             
             st.subheader("Biography")
             st.write(page.summary[:1000] + "...")
 
         with col2:
             st.header("🌍 Origin Country Map")
-            try:
-                # 2. Fixed Map Logic with Timeout
-                geolocator = Nominatim(user_agent="explorer_map_fix_v5", timeout=15)
-                
-                # Detecting Country from Bio
-                target_country = "Pakistan" # Default
-                countries = ["Pakistan", "India", "USA", "United Kingdom", "Portugal", "Argentina", "Canada", "Germany", "France", "Turkey", "Saudi Arabia"]
-                for c in countries:
-                    if c in page.summary:
-                        target_country = c
-                        break
-                
-                # Finding Coordinates
-                location = geolocator.geocode(target_country)
-                
-                if location:
-                    st.success(f"Detected Origin: {target_country}")
-                    # Creating the Map
-                    m = folium.Map(location=[location.latitude, location.longitude], zoom_start=4)
-                    folium.Marker(
-                        [location.latitude, location.longitude], 
-                        popup=f"{target_country}",
-                        tooltip=f"Origin of {page.title}"
-                    ).add_to(m)
-                    
-                    # Displaying the Map
-                    st_folium(m, width=600, height=450, key="personality_map")
-                else:
-                    st.error("Could not locate the country on map. Please refresh.")
-            except Exception as e:
-                st.error("Map service is taking too long. Please click the 'Search' button again.")
+            
+            # Simple Country Detection
+            country_name = "Pakistan" # Default
+            countries_list = ["Pakistan", "India", "USA", "UK", "Portugal", "Argentina", "Canada", "Germany", "France", "Turkey"]
+            for c in countries_list:
+                if c in page.summary:
+                    country_name = c
+                    break
+            
+            st.success(f"Detected Country: {country_name}")
+
+            # Fixed Coordinates for instant loading
+            coords = {
+                "Pakistan": [30.3753, 69.3451],
+                "India": [20.5937, 78.9629],
+                "USA": [37.0902, -95.7129],
+                "UK": [55.3781, -3.4360],
+                "Portugal": [39.3999, -8.2245],
+                "Argentina": [-38.4161, -63.6167],
+                "Turkey": [38.9637, 35.2433]
+            }
+            
+            center = coords.get(country_name, [20, 0])
+            
+            # Rendering Map
+            m = folium.Map(location=center, zoom_start=4)
+            folium.Marker(location=center, popup=country_name).add_to(m)
+            st_folium(m, width=700, height=500, key="final_map")
+
     else:
-        st.error("❌ Personality not found. Check your spelling.")
+        st.error("Personality not found. Please try another name.")
