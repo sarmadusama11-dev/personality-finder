@@ -5,23 +5,37 @@ from streamlit_folium import st_folium
 import requests
 from geopy.geocoders import Nominatim
 
-# 1. Professional Page Setup
-st.set_page_config(page_title="VIP Personality Locator", layout="wide")
+# 1. Page Setup
+st.set_page_config(page_title="Pakistan VIP Locator", layout="wide")
 
-st.title("🛰️ Global VIP Explorer & GPS Tracker")
-st.write("Search for World Leaders, Actors, or Athletes to see their Bio and GPS Origin.")
+st.title("🛰️ Pakistan VIP GPS Explorer")
+st.write("Enter the name of any Pakistani Prime Minister, President, or Leader.")
 
-# 2. Input Search
-name = st.text_input("Enter Personality Full Name:", placeholder="e.g. Narendra Modi, Donald Trump, Shah Rukh Khan, Lionel Messi")
+# 2. Input with Better Search
+name = st.text_input("Enter Leader Name:", placeholder="e.g. Nawaz Sharif, Benazir Bhutto, Shahbaz Sharif, Quaid-e-Azam")
 
 if name:
-    # Wikipedia setup with higher level access
-    wiki = wikipediaapi.Wikipedia(user_agent="VIPExplorer/5.0", language='en')
-    page = wiki.page(name)
+    # Wikipedia setup
+    wiki = wikipediaapi.Wikipedia(user_agent="PakLeaderFinder/7.0", language='en')
+    
+    # --- AUTO-CORRECTION LOGIC ---
+    # Agar Wikipedia par direct page nahi milta, to hum search karke pehla result uthatay hain
+    def get_correct_page(search_query):
+        try:
+            # Wikipedia Search API use karke sahi title nikalna
+            search_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={search_query}&limit=1&namespace=0&format=json"
+            response = requests.get(search_url).json()
+            if response[1]:
+                return wiki.page(response[1][0]) # Pehla sahi result
+            return wiki.page(search_query)
+        except:
+            return wiki.page(search_query)
+
+    page = get_correct_page(name)
 
     if page.exists():
-        # Enhanced Web Image Search (DuckDuckGo API)
-        def get_vip_image(query):
+        # Latest Image Search
+        def get_web_image(query):
             try:
                 url = f"https://duckduckgo.com/pd.js?q={query}&kl=wt-wt"
                 res = requests.get(url).json()
@@ -29,61 +43,47 @@ if name:
             except:
                 return None
 
-        img_url = get_vip_image(name)
-
-        # UI Layout
+        img_url = get_web_image(page.title)
         col1, col2 = st.columns([1, 1.3])
 
         with col1:
             st.header(f"👤 {page.title}")
             if img_url:
-                st.image(img_url, use_container_width=True, caption=f"Latest Image: {page.title}")
-            
+                st.image(img_url, use_container_width=True)
             st.subheader("Official Biography")
-            # Showing more detail for VIPs
-            st.write(page.summary[:1200] + "...")
+            # Pakistan ke leaders ki details show karna
+            st.write(page.summary[:1500] + "...")
 
         with col2:
-            st.header("📍 Satellite GPS Location")
+            st.header("📍 GPS Origin View")
             
-            # 3. High-Accuracy GPS Logic
-            geolocator = Nominatim(user_agent="vip_gps_tracker_v9", timeout=25)
-            
+            # GPS Logic
             try:
-                # Priority 1: Search for origin country based on personality
-                location = geolocator.geocode(f"{page.title} country")
+                geolocator = Nominatim(user_agent="pak_gps_v10", timeout=15)
+                # Specifically searching for their link to Pakistan
+                location = geolocator.geocode("Islamabad, Pakistan") # Default for PMs
                 
-                # Priority 2: Use first paragraph to detect origin
-                if not location:
-                    bio_snippet = page.summary.split('.')[0] + " " + page.summary.split('.')[1]
-                    location = geolocator.geocode(bio_snippet)
+                # Check if birthplace is in bio
+                if "Lahore" in page.summary: location = geolocator.geocode("Lahore, Pakistan")
+                elif "Karachi" in page.summary: location = geolocator.geocode("Karachi, Pakistan")
+                elif "Rawalpindi" in page.summary: location = geolocator.geocode("Rawalpindi, Pakistan")
 
                 if location:
                     st.success(f"GPS Lock: {location.address}")
-                    
-                    # Professional Satellite GPS Map (Hybrid View)
-                    m = folium.Map(
-                        location=[location.latitude, location.longitude], 
-                        zoom_start=5, 
-                        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', # Google Satellite Tiles
-                        attr='Google'
-                    )
-                    
-                    # Red GPS Marker
-                    folium.Marker(
-                        [location.latitude, location.longitude],
-                        popup=f"Origin: {page.title}",
-                        tooltip="Click for Details",
-                        icon=folium.Icon(color='red', icon='record', prefix='fa')
-                    ).add_to(m)
-
-                    # Display Map
-                    st_folium(m, width=750, height=550, key="vip_gps_map")
+                    lat, lon = location.latitude, location.longitude
                 else:
-                    st.warning("GPS coordinates could not be pinpointed. Bio is loaded.")
-            
-            except:
-                st.error("GPS server is under heavy load. Please refresh in a moment.")
+                    lat, lon = 30.3753, 69.3451 # Pakistan Center
 
+                # Satellite Hybrid Map
+                m = folium.Map(
+                    location=[lat, lon], 
+                    zoom_start=6, 
+                    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+                    attr='Google'
+                )
+                folium.Marker([lat, lon], popup=page.title, icon=folium.Icon(color='green', icon='star')).add_to(m)
+                st_folium(m, width=700, height=500, key="pak_vip_map")
+            except:
+                st.error("GPS server timeout. Please refresh.")
     else:
-        st.error("Personality not found. Please provide the full official name (e.g., 'Vladimir Putin').")
+        st.error("Leader not found. Try typing the full name (e.g., 'Zulfikar Ali Bhutto').")
