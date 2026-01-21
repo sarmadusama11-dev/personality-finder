@@ -4,76 +4,78 @@ import folium
 from streamlit_folium import st_folium
 import requests
 
-# Page Config
-st.set_page_config(page_title="VIP Finder Final", layout="wide")
+# 1. Page Setup
+st.set_page_config(page_title="VIP GPS Tracker", layout="wide")
 
-st.title("🛰️ Universal VIP GPS Explorer")
-st.write("Search for any Pakistani Leader, Actor, or Global Star.")
+st.title("🛰️ VIP Personality GPS Tracker")
+st.write("Search for any Pakistani Leader (PM, President) or Global Personality.")
 
-name = st.text_input("Enter Name:", placeholder="e.g. Shahbaz Sharif, Babar Azam, Elon Musk", key="final_search")
+# 2. Search Box
+name = st.text_input("Enter Personality Name:", placeholder="e.g. Shahbaz Sharif, Nawaz Sharif, Benazir Bhutto, Imran Khan")
 
 if name:
-    # Use a simpler User Agent to avoid blocks
-    wiki = wikipediaapi.Wikipedia(user_agent="MyProjectApp/1.0", language='en')
+    # Wikipedia Auto-Search Logic
+    wiki = wikipediaapi.Wikipedia(user_agent="VIPTracker/9.0", language='en')
     
-    try:
-        # Step 1: Search using a more stable method
-        search_url = "https://en.wikipedia.org/w/api.php"
-        s_params = {"action": "opensearch", "search": name, "limit": 1, "format": "json"}
-        s_res = requests.get(search_url, params=s_params).json()
+    def get_official_page(query):
+        try:
+            # Sahi title dhoondne ke liye Wikipedia Search use karna
+            s_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=1&namespace=0&format=json"
+            resp = requests.get(s_url).json()
+            return wiki.page(resp[1][0]) if resp[1] else wiki.page(query)
+        except:
+            return wiki.page(query)
 
-        if s_res[1]:
-            title = s_res[1][0]
-            page = wiki.page(title)
+    page = get_official_page(name)
+
+    if page.exists():
+        # Latest Web Image (DuckDuckGo)
+        def get_img(q):
+            try:
+                r = requests.get(f"https://duckduckgo.com/pd.js?q={q}&kl=wt-wt").json()
+                return r['results'][0]['image']
+            except: return None
+
+        img_url = get_img(page.title)
+        col1, col2 = st.columns([1, 1.3])
+
+        with col1:
+            st.header(f"👤 {page.title}")
+            if img_url:
+                st.image(img_url, use_container_width=True)
+            st.subheader("Official Biography")
+            st.write(page.summary[:1200] + "...")
+
+        with col2:
+            st.header("📍 GPS Satellite View")
             
-            col1, col2 = st.columns([1, 1.2])
+            # --- RELIABLE GPS LOGIC (Fixed for Pakistan Leaders) ---
+            # Agar auto-gps fail ho, to ye backup use karega
+            city_coords = {
+                "Lahore": [31.5204, 74.3587], "Karachi": [24.8607, 67.0011],
+                "Islamabad": [33.6844, 73.0479], "Rawalpindi": [33.5651, 73.0169],
+                "London": [51.5074, -0.1278]
+            }
             
-            with col1:
-                st.header(f"👤 {title}")
-                
-                # Image fetch with error handling
-                img_url = None
-                img_params = {"action": "query", "titles": title, "prop": "pageimages", "format": "json", "pithumbsize": 500}
-                img_data = requests.get(search_url, params=img_params).json()
-                pages = img_data.get('query', {}).get('pages', {})
-                for p in pages:
-                    if 'thumbnail' in pages[p]:
-                        img_url = pages[p]['thumbnail']['source']
-                
-                if img_url:
-                    st.image(img_url, use_container_width=True)
-                
-                st.subheader("Biography")
-                st.write(page.summary[:1000] + "...")
-
-            with col2:
-                st.header("📍 GPS Origin Location")
-                
-                # Step 2: Reliable GPS Coordinates
-                # Common coordinates for personalities (Automatic Fallback)
-                lat, lon = 30.3753, 69.3451 # Default Pakistan
-                
-                if "Pakistan" in page.summary: lat, lon = 30.3753, 69.3451
-                elif "India" in page.summary: lat, lon = 20.5937, 78.9629
-                elif "United States" in page.summary or "USA" in page.summary: lat, lon = 37.0902, -95.7129
-                elif "United Kingdom" in page.summary or "UK" in page.summary: lat, lon = 55.3781, -3.4360
-                
-                st.success(f"Region: {title}'s Origin")
-                
-                # Step 3: Map with NO timeout issues
-                m = folium.Map(
-                    location=[lat, lon], 
-                    zoom_start=5, 
-                    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                    attr='Google Satellite'
-                )
-                folium.Marker([lat, lon], popup=title).add_to(m)
-                
-                # Static key to prevent refresh loops
-                st_folium(m, width=700, height=500, key=f"map_display_{title.replace(' ', '_')}")
-
-        else:
-            st.error("No results found. Please check spelling.")
-
-    except Exception as e:
-        st.error("Please refresh the page and try again.")
+            # Bio mein se shehr pehchanna
+            lat, lon = 33.6844, 73.0479 # Default Islamabad
+            found_city = "Islamabad"
+            for city, coord in city_coords.items():
+                if city in page.summary:
+                    lat, lon = coord
+                    found_city = city
+                    break
+            
+            st.success(f"GPS Locked on: {found_city}, Pakistan")
+            
+            # Hybrid Satellite Map (GPS Style)
+            m = folium.Map(
+                location=[lat, lon], 
+                zoom_start=10, 
+                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+                attr='Google Maps Satellite'
+            )
+            folium.Marker([lat, lon], popup=f"{page.title}'s Base", icon=folium.Icon(color='red', icon='record', prefix='fa')).add_to(m)
+            st_folium(m, width=700, height=550, key="final_vip_gps")
+    else:
+        st.error("Personality not found. Try full name (e.g. 'Mian Muhammad Nawaz Sharif').")
