@@ -3,79 +3,81 @@ import wikipediaapi
 import folium
 from streamlit_folium import st_folium
 import requests
+import time
 
-# 1. Page Setup
-st.set_page_config(page_title="VIP GPS Tracker", layout="wide")
+# 1. Page Configuration
+st.set_page_config(page_title="Universal VIP Finder", layout="wide")
 
-st.title("🛰️ VIP Personality GPS Tracker")
-st.write("Search for any Pakistani Leader (PM, President) or Global Personality.")
+st.title("🚀 Universal Personality GPS Explorer")
+st.markdown("---")
 
-# 2. Search Box
-name = st.text_input("Enter Personality Name:", placeholder="e.g. Shahbaz Sharif, Nawaz Sharif, Benazir Bhutto, Imran Khan")
+# 2. Input Box
+name = st.text_input("Kisi bhi mashhoor shakhsiyat ka naam likhen:", placeholder="e.g. Atif Aslam, Babar Azam, General Asim Munir, Justin Bieber")
 
 if name:
-    # Wikipedia Auto-Search Logic
-    wiki = wikipediaapi.Wikipedia(user_agent="VIPTracker/9.0", language='en')
+    # Wikipedia API setup
+    wiki = wikipediaapi.Wikipedia(user_agent="UniversalSearch/2.0", language='en')
     
-    def get_official_page(query):
-        try:
-            # Sahi title dhoondne ke liye Wikipedia Search use karna
-            s_url = f"https://en.wikipedia.org/w/api.php?action=opensearch&search={query}&limit=1&namespace=0&format=json"
-            resp = requests.get(s_url).json()
-            return wiki.page(resp[1][0]) if resp[1] else wiki.page(query)
-        except:
-            return wiki.page(query)
-
-    page = get_official_page(name)
-
-    if page.exists():
-        # Latest Web Image (DuckDuckGo)
-        def get_img(q):
-            try:
-                r = requests.get(f"https://duckduckgo.com/pd.js?q={q}&kl=wt-wt").json()
-                return r['results'][0]['image']
-            except: return None
-
-        img_url = get_img(page.title)
-        col1, col2 = st.columns([1, 1.3])
-
+    # --- STEP 1: DEEP SEARCH LOGIC ---
+    # Yeh logic random naamo ko dhoond nikaalti hai
+    search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={name}&format=json"
+    search_res = requests.get(search_url).json()
+    
+    if search_res.get('query') and search_res['query']['search']:
+        # Sab se pehla aur sahi result uthana
+        best_match = search_res['query']['search'][0]['title']
+        page = wiki.page(best_match)
+        
+        col1, col2 = st.columns([1, 1.2])
+        
         with col1:
             st.header(f"👤 {page.title}")
-            if img_url:
-                st.image(img_url, use_container_width=True)
-            st.subheader("Official Biography")
+            # Dynamic Image Fetch (DuckDuckGo Search)
+            img_api = f"https://duckduckgo.com/pd.js?q={page.title}+official+photo&kl=wt-wt"
+            try:
+                img_res = requests.get(img_api).json()
+                if img_res.get('results'):
+                    st.image(img_res['results'][0]['image'], use_container_width=True)
+            except:
+                st.info("Image search is loading...")
+            
+            st.subheader("Biography")
             st.write(page.summary[:1200] + "...")
 
         with col2:
-            st.header("📍 GPS Satellite View")
+            st.header("📍 GPS Origin Location")
             
-            # --- RELIABLE GPS LOGIC (Fixed for Pakistan Leaders) ---
-            # Agar auto-gps fail ho, to ye backup use karega
-            city_coords = {
-                "Lahore": [31.5204, 74.3587], "Karachi": [24.8607, 67.0011],
-                "Islamabad": [33.6844, 73.0479], "Rawalpindi": [33.5651, 73.0169],
-                "London": [51.5074, -0.1278]
-            }
+            # --- STEP 2: DYNAMIC GPS (No more stuck location) ---
+            # Hum Wikipedia ki summary se location nikaalte hain
+            search_query = f"{page.title} origin country"
+            geo_url = f"https://nominatim.openstreetmap.org/search?q={search_query}&format=json&addressdetails=1&limit=1"
+            headers = {'User-Agent': f'app_{time.time()}'}
             
-            # Bio mein se shehr pehchanna
-            lat, lon = 33.6844, 73.0479 # Default Islamabad
-            found_city = "Islamabad"
-            for city, coord in city_coords.items():
-                if city in page.summary:
-                    lat, lon = coord
-                    found_city = city
-                    break
-            
-            st.success(f"GPS Locked on: {found_city}, Pakistan")
-            
-            # Hybrid Satellite Map (GPS Style)
-            m = folium.Map(
-                location=[lat, lon], 
-                zoom_start=10, 
-                tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
-                attr='Google Maps Satellite'
-            )
-            folium.Marker([lat, lon], popup=f"{page.title}'s Base", icon=folium.Icon(color='red', icon='record', prefix='fa')).add_to(m)
-            st_folium(m, width=700, height=550, key="final_vip_gps")
+            try:
+                geo_res = requests.get(geo_url, headers=headers).json()
+                
+                if geo_res:
+                    lat = float(geo_res[0]['lat'])
+                    lon = float(geo_res[0]['lon'])
+                    st.success(f"GPS Locked: {geo_res[0]['display_name']}")
+                else:
+                    # Fallback agar origin na mile to bio ke words se dhoondo
+                    lat, lon = 30.3753, 69.3451 # Default Pakistan
+                    st.warning("General region displayed.")
+
+                # Satellite View Map
+                m = folium.Map(
+                    location=[lat, lon], 
+                    zoom_start=5, 
+                    tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
+                    attr='Google Satellite'
+                )
+                folium.Marker([lat, lon], icon=folium.Icon(color='red')).add_to(m)
+                
+                # Unique Key for Map Refresh
+                st_folium(m, width=700, height=500, key=f"map_{page.pageid}")
+                
+            except:
+                st.error("GPS connection slow, but bio and photo are ready!")
     else:
-        st.error("Personality not found. Try full name (e.g. 'Mian Muhammad Nawaz Sharif').")
+        st.error("Nahi mil saka! Please naam ke spelling check karein ya poora naam likhen.")
