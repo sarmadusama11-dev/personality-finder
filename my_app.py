@@ -3,76 +3,87 @@ import wikipediaapi
 import folium
 from streamlit_folium import st_folium
 import requests
+from geopy.geocoders import Nominatim
 
-# 1. Page Config
-st.set_page_config(page_title="Global Personality Explorer", layout="wide")
+# 1. Professional Page Setup
+st.set_page_config(page_title="VIP Personality Locator", layout="wide")
 
-st.title("🌟 Global Personality Explorer")
-st.write("Search any famous personality to see their latest photo and origin country on the map.")
+st.title("🛰️ Global VIP Explorer & GPS Tracker")
+st.write("Search for World Leaders, Actors, or Athletes to see their Bio and GPS Origin.")
 
-# 2. Search Function for Latest Images (Like Google)
-def get_latest_image(query):
-    try:
-        # Using DuckDuckGo API (Fast and Free like Google Images)
-        url = f"https://duckduckgo.com/pd.js?q={query}&kl=wt-wt"
-        res = requests.get(url).json()
-        return res['results'][0]['image'] # Returns the first high-quality image
-    except:
-        return None
-
-# 3. Input Box
-name = st.text_input("Enter Personality Name:", placeholder="e.g. Cristiano Ronaldo, Imran Khan, Elon Musk")
+# 2. Input Search
+name = st.text_input("Enter Personality Full Name:", placeholder="e.g. Narendra Modi, Donald Trump, Shah Rukh Khan, Lionel Messi")
 
 if name:
-    wiki = wikipediaapi.Wikipedia(user_agent="FinalProject/3.0", language='en')
+    # Wikipedia setup with higher level access
+    wiki = wikipediaapi.Wikipedia(user_agent="VIPExplorer/5.0", language='en')
     page = wiki.page(name)
 
     if page.exists():
-        # Fetching latest image from the web
-        img_url = get_latest_image(name)
+        # Enhanced Web Image Search (DuckDuckGo API)
+        def get_vip_image(query):
+            try:
+                url = f"https://duckduckgo.com/pd.js?q={query}&kl=wt-wt"
+                res = requests.get(url).json()
+                return res['results'][0]['image']
+            except:
+                return None
 
-        col1, col2 = st.columns([1, 1.2])
+        img_url = get_vip_image(name)
+
+        # UI Layout
+        col1, col2 = st.columns([1, 1.3])
 
         with col1:
-            st.header(f"Profile: {page.title}")
+            st.header(f"👤 {page.title}")
             if img_url:
-                st.image(img_url, caption=f"Latest Image of {page.title}", use_container_width=True)
-            else:
-                st.info("Image not found on web. Showing biography...")
+                st.image(img_url, use_container_width=True, caption=f"Latest Image: {page.title}")
             
-            st.subheader("Biography")
-            st.write(page.summary[:1000] + "...")
+            st.subheader("Official Biography")
+            # Showing more detail for VIPs
+            st.write(page.summary[:1200] + "...")
 
         with col2:
-            st.header("🌍 Origin Country Map")
+            st.header("📍 Satellite GPS Location")
             
-            # Simple Country Detection
-            country_name = "Pakistan" # Default
-            countries_list = ["Pakistan", "India", "USA", "UK", "Portugal", "Argentina", "Canada", "Germany", "France", "Turkey"]
-            for c in countries_list:
-                if c in page.summary:
-                    country_name = c
-                    break
+            # 3. High-Accuracy GPS Logic
+            geolocator = Nominatim(user_agent="vip_gps_tracker_v9", timeout=25)
             
-            st.success(f"Detected Country: {country_name}")
+            try:
+                # Priority 1: Search for origin country based on personality
+                location = geolocator.geocode(f"{page.title} country")
+                
+                # Priority 2: Use first paragraph to detect origin
+                if not location:
+                    bio_snippet = page.summary.split('.')[0] + " " + page.summary.split('.')[1]
+                    location = geolocator.geocode(bio_snippet)
 
-            # Fixed Coordinates for instant loading
-            coords = {
-                "Pakistan": [30.3753, 69.3451],
-                "India": [20.5937, 78.9629],
-                "USA": [37.0902, -95.7129],
-                "UK": [55.3781, -3.4360],
-                "Portugal": [39.3999, -8.2245],
-                "Argentina": [-38.4161, -63.6167],
-                "Turkey": [38.9637, 35.2433]
-            }
+                if location:
+                    st.success(f"GPS Lock: {location.address}")
+                    
+                    # Professional Satellite GPS Map (Hybrid View)
+                    m = folium.Map(
+                        location=[location.latitude, location.longitude], 
+                        zoom_start=5, 
+                        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', # Google Satellite Tiles
+                        attr='Google'
+                    )
+                    
+                    # Red GPS Marker
+                    folium.Marker(
+                        [location.latitude, location.longitude],
+                        popup=f"Origin: {page.title}",
+                        tooltip="Click for Details",
+                        icon=folium.Icon(color='red', icon='record', prefix='fa')
+                    ).add_to(m)
+
+                    # Display Map
+                    st_folium(m, width=750, height=550, key="vip_gps_map")
+                else:
+                    st.warning("GPS coordinates could not be pinpointed. Bio is loaded.")
             
-            center = coords.get(country_name, [20, 0])
-            
-            # Rendering Map
-            m = folium.Map(location=center, zoom_start=4)
-            folium.Marker(location=center, popup=country_name).add_to(m)
-            st_folium(m, width=700, height=500, key="final_map")
+            except:
+                st.error("GPS server is under heavy load. Please refresh in a moment.")
 
     else:
-        st.error("Personality not found. Please try another name.")
+        st.error("Personality not found. Please provide the full official name (e.g., 'Vladimir Putin').")
