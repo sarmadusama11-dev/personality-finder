@@ -1,0 +1,6 @@
+streamlit
+wikipedia-api
+geopy
+folium
+streamlit-folium
+requests
