@@ -4,48 +4,36 @@ import folium
 from streamlit_folium import st_folium
 import requests
 
-# 1. Page Configuration
-st.set_page_config(page_title="VIP Finder Pro", layout="wide")
+# Page Config
+st.set_page_config(page_title="VIP Finder Final", layout="wide")
 
 st.title("🛰️ Universal VIP GPS Explorer")
-st.write("Dunya ki kisi bhi mashhoor shakhsiyat ka naam likhen (Actors, PMs, Players).")
+st.write("Search for any Pakistani Leader, Actor, or Global Star.")
 
-# 2. Search Input
-name = st.text_input("Enter Name:", placeholder="e.g. Babar Azam, Nawaz Sharif, Shahrukh Khan, Elon Musk", key="main_search")
+name = st.text_input("Enter Name:", placeholder="e.g. Shahbaz Sharif, Babar Azam, Elon Musk", key="final_search")
 
 if name:
-    # Fail-safe Wikipedia Search
-    wiki = wikipediaapi.Wikipedia(user_agent="UltimateFinder/1.0", language='en')
+    # Use a simpler User Agent to avoid blocks
+    wiki = wikipediaapi.Wikipedia(user_agent="MyProjectApp/1.0", language='en')
     
     try:
-        # Step 1: Search for the most accurate title
+        # Step 1: Search using a more stable method
         search_url = "https://en.wikipedia.org/w/api.php"
-        params = {
-            "action": "query",
-            "list": "search",
-            "srsearch": name,
-            "format": "json"
-        }
-        search_res = requests.get(search_url, params=params).json()
-        
-        if search_res.get('query') and search_res['query']['search']:
-            official_title = search_res['query']['search'][0]['title']
-            page = wiki.page(official_title)
+        s_params = {"action": "opensearch", "search": name, "limit": 1, "format": "json"}
+        s_res = requests.get(search_url, params=s_params).json()
+
+        if s_res[1]:
+            title = s_res[1][0]
+            page = wiki.page(title)
             
             col1, col2 = st.columns([1, 1.2])
             
             with col1:
-                st.header(f"👤 {page.title}")
+                st.header(f"👤 {title}")
                 
-                # Step 2: Reliable Image Fetch
+                # Image fetch with error handling
                 img_url = None
-                img_params = {
-                    "action": "query",
-                    "titles": official_title,
-                    "prop": "pageimages",
-                    "format": "json",
-                    "pithumbsize": 500
-                }
+                img_params = {"action": "query", "titles": title, "prop": "pageimages", "format": "json", "pithumbsize": 500}
                 img_data = requests.get(search_url, params=img_params).json()
                 pages = img_data.get('query', {}).get('pages', {})
                 for p in pages:
@@ -54,8 +42,6 @@ if name:
                 
                 if img_url:
                     st.image(img_url, use_container_width=True)
-                else:
-                    st.warning("Official Photo not found, showing Biography.")
                 
                 st.subheader("Biography")
                 st.write(page.summary[:1000] + "...")
@@ -63,38 +49,31 @@ if name:
             with col2:
                 st.header("📍 GPS Origin Location")
                 
-                # Step 3: Reliable Location Detection (Backup system)
-                # Hum pehle summary se mulk dhoondte hain
-                countries = ["Pakistan", "India", "USA", "UK", "Canada", "Germany", "France", "Russia", "China", "Portugal"]
-                detected_country = "Pakistan" # Default
-                for c in countries:
-                    if c in page.summary:
-                        detected_country = c
-                        break
+                # Step 2: Reliable GPS Coordinates
+                # Common coordinates for personalities (Automatic Fallback)
+                lat, lon = 30.3753, 69.3451 # Default Pakistan
                 
-                # GPS Coordinates Backup (Taake timeout ka masla hi na ho)
-                coords = {
-                    "Pakistan": [30.3753, 69.3451], "India": [20.5937, 78.9629],
-                    "USA": [37.0902, -95.7129], "UK": [55.3781, -3.4360],
-                    "Portugal": [39.3999, -8.2245], "China": [35.8617, 104.1954]
-                }
+                if "Pakistan" in page.summary: lat, lon = 30.3753, 69.3451
+                elif "India" in page.summary: lat, lon = 20.5937, 78.9629
+                elif "United States" in page.summary or "USA" in page.summary: lat, lon = 37.0902, -95.7129
+                elif "United Kingdom" in page.summary or "UK" in page.summary: lat, lon = 55.3781, -3.4360
                 
-                lat_lon = coords.get(detected_country, [20, 0])
+                st.success(f"Region: {title}'s Origin")
                 
-                st.success(f"Region Detected: {detected_country}")
-                
-                # Satellite View Map
+                # Step 3: Map with NO timeout issues
                 m = folium.Map(
-                    location=lat_lon, 
+                    location=[lat, lon], 
                     zoom_start=5, 
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
                     attr='Google Satellite'
                 )
-                folium.Marker(lat_lon, popup=f"{page.title}'s Origin").add_to(m)
+                folium.Marker([lat, lon], popup=title).add_to(m)
                 
-                st_folium(m, width=700, height=500, key=f"map_{official_title.replace(' ', '_')}")
+                # Static key to prevent refresh loops
+                st_folium(m, width=700, height=500, key=f"map_display_{title.replace(' ', '_')}")
+
         else:
-            st.error("No results found. Please check the spelling.")
-            
+            st.error("No results found. Please check spelling.")
+
     except Exception as e:
-        st.error("System Refreshing... Please try again in a few seconds.")
+        st.error("Please refresh the page and try again.")
