@@ -3,81 +3,98 @@ import wikipediaapi
 import folium
 from streamlit_folium import st_folium
 import requests
-import time
 
 # 1. Page Configuration
-st.set_page_config(page_title="Universal VIP Finder", layout="wide")
+st.set_page_config(page_title="VIP Finder Pro", layout="wide")
 
-st.title("🚀 Universal Personality GPS Explorer")
-st.markdown("---")
+st.title("🛰️ Universal VIP GPS Explorer")
+st.write("Dunya ki kisi bhi mashhoor shakhsiyat ka naam likhen (Actors, PMs, Players).")
 
-# 2. Input Box
-name = st.text_input("Kisi bhi mashhoor shakhsiyat ka naam likhen:", placeholder="e.g. Atif Aslam, Babar Azam, General Asim Munir, Justin Bieber")
+# 2. Search Input
+name = st.text_input("Enter Name:", placeholder="e.g. Babar Azam, Nawaz Sharif, Shahrukh Khan, Elon Musk", key="main_search")
 
 if name:
-    # Wikipedia API setup
-    wiki = wikipediaapi.Wikipedia(user_agent="UniversalSearch/2.0", language='en')
+    # Fail-safe Wikipedia Search
+    wiki = wikipediaapi.Wikipedia(user_agent="UltimateFinder/1.0", language='en')
     
-    # --- STEP 1: DEEP SEARCH LOGIC ---
-    # Yeh logic random naamo ko dhoond nikaalti hai
-    search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={name}&format=json"
-    search_res = requests.get(search_url).json()
-    
-    if search_res.get('query') and search_res['query']['search']:
-        # Sab se pehla aur sahi result uthana
-        best_match = search_res['query']['search'][0]['title']
-        page = wiki.page(best_match)
+    try:
+        # Step 1: Search for the most accurate title
+        search_url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": name,
+            "format": "json"
+        }
+        search_res = requests.get(search_url, params=params).json()
         
-        col1, col2 = st.columns([1, 1.2])
-        
-        with col1:
-            st.header(f"👤 {page.title}")
-            # Dynamic Image Fetch (DuckDuckGo Search)
-            img_api = f"https://duckduckgo.com/pd.js?q={page.title}+official+photo&kl=wt-wt"
-            try:
-                img_res = requests.get(img_api).json()
-                if img_res.get('results'):
-                    st.image(img_res['results'][0]['image'], use_container_width=True)
-            except:
-                st.info("Image search is loading...")
+        if search_res.get('query') and search_res['query']['search']:
+            official_title = search_res['query']['search'][0]['title']
+            page = wiki.page(official_title)
             
-            st.subheader("Biography")
-            st.write(page.summary[:1200] + "...")
-
-        with col2:
-            st.header("📍 GPS Origin Location")
+            col1, col2 = st.columns([1, 1.2])
             
-            # --- STEP 2: DYNAMIC GPS (No more stuck location) ---
-            # Hum Wikipedia ki summary se location nikaalte hain
-            search_query = f"{page.title} origin country"
-            geo_url = f"https://nominatim.openstreetmap.org/search?q={search_query}&format=json&addressdetails=1&limit=1"
-            headers = {'User-Agent': f'app_{time.time()}'}
-            
-            try:
-                geo_res = requests.get(geo_url, headers=headers).json()
+            with col1:
+                st.header(f"👤 {page.title}")
                 
-                if geo_res:
-                    lat = float(geo_res[0]['lat'])
-                    lon = float(geo_res[0]['lon'])
-                    st.success(f"GPS Locked: {geo_res[0]['display_name']}")
+                # Step 2: Reliable Image Fetch
+                img_url = None
+                img_params = {
+                    "action": "query",
+                    "titles": official_title,
+                    "prop": "pageimages",
+                    "format": "json",
+                    "pithumbsize": 500
+                }
+                img_data = requests.get(search_url, params=img_params).json()
+                pages = img_data.get('query', {}).get('pages', {})
+                for p in pages:
+                    if 'thumbnail' in pages[p]:
+                        img_url = pages[p]['thumbnail']['source']
+                
+                if img_url:
+                    st.image(img_url, use_container_width=True)
                 else:
-                    # Fallback agar origin na mile to bio ke words se dhoondo
-                    lat, lon = 30.3753, 69.3451 # Default Pakistan
-                    st.warning("General region displayed.")
+                    st.warning("Official Photo not found, showing Biography.")
+                
+                st.subheader("Biography")
+                st.write(page.summary[:1000] + "...")
 
+            with col2:
+                st.header("📍 GPS Origin Location")
+                
+                # Step 3: Reliable Location Detection (Backup system)
+                # Hum pehle summary se mulk dhoondte hain
+                countries = ["Pakistan", "India", "USA", "UK", "Canada", "Germany", "France", "Russia", "China", "Portugal"]
+                detected_country = "Pakistan" # Default
+                for c in countries:
+                    if c in page.summary:
+                        detected_country = c
+                        break
+                
+                # GPS Coordinates Backup (Taake timeout ka masla hi na ho)
+                coords = {
+                    "Pakistan": [30.3753, 69.3451], "India": [20.5937, 78.9629],
+                    "USA": [37.0902, -95.7129], "UK": [55.3781, -3.4360],
+                    "Portugal": [39.3999, -8.2245], "China": [35.8617, 104.1954]
+                }
+                
+                lat_lon = coords.get(detected_country, [20, 0])
+                
+                st.success(f"Region Detected: {detected_country}")
+                
                 # Satellite View Map
                 m = folium.Map(
-                    location=[lat, lon], 
+                    location=lat_lon, 
                     zoom_start=5, 
                     tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', 
                     attr='Google Satellite'
                 )
-                folium.Marker([lat, lon], icon=folium.Icon(color='red')).add_to(m)
+                folium.Marker(lat_lon, popup=f"{page.title}'s Origin").add_to(m)
                 
-                # Unique Key for Map Refresh
-                st_folium(m, width=700, height=500, key=f"map_{page.pageid}")
-                
-            except:
-                st.error("GPS connection slow, but bio and photo are ready!")
-    else:
-        st.error("Nahi mil saka! Please naam ke spelling check karein ya poora naam likhen.")
+                st_folium(m, width=700, height=500, key=f"map_{official_title.replace(' ', '_')}")
+        else:
+            st.error("No results found. Please check the spelling.")
+            
+    except Exception as e:
+        st.error("System Refreshing... Please try again in a few seconds.")
